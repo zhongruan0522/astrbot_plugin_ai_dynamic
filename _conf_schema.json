@@ -1,0 +1,203 @@
+{
+  "prompts": {
+    "description": "提示词配置",
+    "type": "object",
+    "items": {
+      "dynamic_prompt": {
+        "description": "发布动态的系统提示词",
+        "type": "text",
+        "default": "你是一个富有创意的社交媒体内容创作者。请根据用户的日常聊天记录和当前情况，创作一条适合QQ空间的动态内容。要求：1.内容要真实贴近生活 2.语言风格要符合年轻人的表达习惯 3.长度控制在100字以内 4.可以带一些合适的emoji表情 5.避免过于正式或商业化的表达",
+        "hint": "用于AI生成QQ动态内容的系统提示词，会影响动态的风格和内容",
+        "editor_mode": true,
+        "editor_language": "markdown"
+      },
+      "comment_prompt": {
+        "description": "评论动态的系统提示词", 
+        "type": "text",
+        "default": "你是一个善于社交的朋友，会对别人的QQ动态进行友善、有趣的评论。请根据动态内容给出合适的评论回复。要求：1.评论要自然不做作 2.可以使用emoji表情 3.长度控制在50字以内 4.避免重复性的回复 5.体现出对朋友的关心和互动",
+        "hint": "用于AI生成动态评论的系统提示词",
+        "editor_mode": true,
+        "editor_language": "markdown"
+      }
+    }
+  },
+  "api_config": {
+    "description": "自定义API配置",
+    "type": "object", 
+    "items": {
+      "enable_custom_api": {
+        "description": "启用自定义API",
+        "type": "bool",
+        "default": false,
+        "hint": "开启后将使用自定义API而非AstrBot内置LLM"
+      },
+      "api_url": {
+        "description": "API接口地址",
+        "type": "string",
+        "default": "",
+        "hint": "OpenAI兼容的API接口地址，如：https://api.openai.com/v1/chat/completions"
+      },
+      "api_key": {
+        "description": "API密钥",
+        "type": "string", 
+        "default": "",
+        "hint": "API访问密钥",
+        "obvious_hint": true
+      },
+      "model_name": {
+        "description": "模型名称",
+        "type": "string",
+        "default": "gpt-3.5-turbo",
+        "hint": "要使用的AI模型名称"
+      }
+    }
+  },
+  "memory_config": {
+    "description": "记忆系统配置",
+    "type": "object",
+    "items": {
+      "enable_memory": {
+        "description": "启用记忆功能",
+        "type": "bool",
+        "default": true
+      },
+      "user_whitelist": {
+        "description": "记忆白名单用户ID",
+        "type": "list",
+        "default": [],
+        "hint": "只记录这些用户的聊天记录，格式：['12345678', '87654321']"
+      },
+      "memory_days": {
+        "description": "记忆保存天数",
+        "type": "int",
+        "default": 30,
+        "hint": "聊天记录保存天数，超过后自动清理"
+      },
+      "summary_time": {
+        "description": "每日总结时间",
+        "type": "string",
+        "default": "00:00",
+        "hint": "每天进行记忆总结的时间，格式：HH:MM"
+      },
+      "max_daily_messages": {
+        "description": "每日最大记录消息数",
+        "type": "int",
+        "default": 100,
+        "hint": "每个用户每天最多记录的消息条数"
+      }
+    }
+  },
+  "dynamic_config": {
+    "description": "动态发布配置",
+    "type": "object",
+    "items": {
+      "enable_auto_post": {
+        "description": "启用自动发布动态",
+        "type": "bool",
+        "default": false
+      },
+      "daily_post_count": {
+        "description": "每日发布次数",
+        "type": "int",
+        "default": 2,
+        "hint": "每天自动发布动态的次数"
+      },
+      "post_time_range": {
+        "description": "发布时间范围",
+        "type": "object",
+        "items": {
+          "start_time": {
+            "description": "开始时间",
+            "type": "string",
+            "default": "09:00",
+            "hint": "开始发布动态的时间，格式：HH:MM"
+          },
+          "end_time": {
+            "description": "结束时间", 
+            "type": "string",
+            "default": "22:00",
+            "hint": "停止发布动态的时间，格式：HH:MM"
+          }
+        }
+      },
+      "min_interval_hours": {
+        "description": "最小发布间隔(小时)",
+        "type": "int",
+        "default": 3,
+        "hint": "两次发布动态之间的最小间隔时间"
+      }
+    }
+  },
+  "comment_config": {
+    "description": "自动评论配置",
+    "type": "object",
+    "items": {
+      "enable_auto_comment": {
+        "description": "启用自动评论",
+        "type": "bool", 
+        "default": false
+      },
+      "target_users": {
+        "description": "评论目标用户QQ号",
+        "type": "list",
+        "default": [],
+        "hint": "自动评论这些用户的动态，格式：['12345678', '87654321']"
+      },
+      "comment_probability": {
+        "description": "评论概率(%)",
+        "type": "int",
+        "default": 30,
+        "hint": "看到动态时评论的概率，0-100"
+      },
+      "check_interval_minutes": {
+        "description": "检查间隔(分钟)",
+        "type": "int",
+        "default": 30,
+        "hint": "检查新动态的时间间隔"
+      }
+    }
+  },
+  "qzone_config": {
+    "description": "QQ空间配置",
+    "type": "object",
+    "items": {
+      "qq_cookies": {
+        "description": "QQ空间登录Cookies",
+        "type": "text",
+        "default": "",
+        "hint": "从浏览器获取的QQ空间登录凭据，用于发布动态和评论",
+        "obvious_hint": true
+      },
+      "user_agent": {
+        "description": "浏览器User-Agent",
+        "type": "text", 
+        "default": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "hint": "模拟浏览器的User-Agent字符串"
+      }
+    }
+  },
+  "advanced_config": {
+    "description": "高级配置",
+    "type": "object",
+    "items": {
+      "enable_debug": {
+        "description": "启用调试模式",
+        "type": "bool",
+        "default": false,
+        "hint": "开启后会输出详细的调试信息"
+      },
+      "data_backup": {
+        "description": "启用数据备份",
+        "type": "bool",
+        "default": true,
+        "hint": "定期备份聊天记录和总结数据"
+      },
+      "backup_interval_days": {
+        "description": "备份间隔天数",
+        "type": "int",
+        "default": 7,
+        "hint": "数据备份的间隔天数"
+      }
+    }
+  }
+}
