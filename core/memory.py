@@ -188,7 +188,15 @@ class MemorySystem:
     async def _call_llm_for_summary(self, llm_client, prompt: str) -> Optional[str]:
         """调用LLM生成总结"""
         try:
-            if hasattr(llm_client, 'text_chat'):
+            if hasattr(llm_client, '_call_llm_unified'):
+                # 使用主插件的统一LLM接口
+                return await llm_client._call_llm_unified(
+                    prompt=prompt,
+                    system_prompt="你是一个善于总结和分析的助手，能够从对话中提取关键信息并生成简洁的总结。",
+                    contexts=[]
+                )
+            elif hasattr(llm_client, 'text_chat'):
+                # 直接调用LLM
                 response = await llm_client.text_chat(
                     prompt=prompt,
                     system_prompt="你是一个善于总结和分析的助手，能够从对话中提取关键信息并生成简洁的总结。",
@@ -196,8 +204,27 @@ class MemorySystem:
                     session_id=None
                 )
                 
-                if response.role == "assistant":
+                # 统一处理响应格式
+                if response is None:
+                    return None
+                
+                # 处理dict格式响应
+                if isinstance(response, dict):
+                    if response.get('role') == 'assistant':
+                        return response.get('completion_text', '').strip()
+                    elif 'content' in response:
+                        return response['content'].strip()
+                
+                # 处理对象格式响应
+                if hasattr(response, 'completion_text'):
                     return response.completion_text.strip()
+                elif hasattr(response, 'content'):
+                    return response.content.strip()
+                elif hasattr(response, 'role') and response.role == 'assistant':
+                    if hasattr(response, 'completion_text'):
+                        return response.completion_text.strip()
+                
+                return str(response).strip() if response else None
             
         except Exception as e:
             logger.error(f"LLM调用失败: {e}")

@@ -207,8 +207,7 @@ class TaskScheduler:
             
             dynamic_prompt = self.config.get('prompts', {}).get('dynamic_prompt', '')
             
-            user_prompt = f"""
-基于以下最近的生活记录，创作一条QQ动态：
+            user_prompt = f"""基于以下最近的生活记录，创作一条QQ动态：
 
 最近生活记录：
 {summary_text}
@@ -218,11 +217,17 @@ class TaskScheduler:
 2. 语言要自然贴近生活
 3. 可以加入一些情感表达和emoji
 4. 长度控制在100字以内
-5. 避免过于正式或商业化的表达
-"""
+5. 避免过于正式或商业化的表达"""
 
             # 调用LLM生成内容
-            if hasattr(self.llm_client, 'text_chat'):
+            if hasattr(self.llm_client, '_call_llm_unified'):
+                # 使用主插件的统一LLM接口
+                return await self.llm_client._call_llm_unified(
+                    prompt=user_prompt,
+                    system_prompt=dynamic_prompt,
+                    contexts=[]
+                )
+            elif hasattr(self.llm_client, 'text_chat'):
                 response = await self.llm_client.text_chat(
                     prompt=user_prompt,
                     system_prompt=dynamic_prompt,
@@ -230,8 +235,25 @@ class TaskScheduler:
                     session_id=None
                 )
                 
-                if response and response.get('role') == 'assistant':
-                    return response.get('completion_text', '').strip()
+                # 统一处理响应格式
+                if response is None:
+                    return None
+                
+                if isinstance(response, dict):
+                    if response.get('role') == 'assistant':
+                        return response.get('completion_text', '').strip()
+                    elif 'content' in response:
+                        return response['content'].strip()
+                
+                if hasattr(response, 'completion_text'):
+                    return response.completion_text.strip()
+                elif hasattr(response, 'content'):
+                    return response.content.strip()
+                elif hasattr(response, 'role') and response.role == 'assistant':
+                    if hasattr(response, 'completion_text'):
+                        return response.completion_text.strip()
+                
+                return str(response).strip() if response else None
             
         except Exception as e:
             logger.error(f"生成个性化动态失败: {e}")
@@ -318,8 +340,7 @@ class TaskScheduler:
         try:
             comment_prompt = self.config.get('prompts', {}).get('comment_prompt', '')
             
-            user_prompt = f"""
-对以下动态内容生成一条友好的评论：
+            user_prompt = f"""对以下动态内容生成一条友好的评论：
 
 动态内容：{dynamic_content}
 
@@ -328,10 +349,17 @@ class TaskScheduler:
 2. 体现出朋友之间的关心
 3. 可以使用合适的emoji
 4. 长度控制在50字以内
-5. 避免重复性的回复
-"""
+5. 避免重复性的回复"""
 
-            if hasattr(self.llm_client, 'text_chat'):
+            # 调用LLM生成评论
+            if hasattr(self.llm_client, '_call_llm_unified'):
+                # 使用主插件的统一LLM接口
+                return await self.llm_client._call_llm_unified(
+                    prompt=user_prompt,
+                    system_prompt=comment_prompt,
+                    contexts=[]
+                )
+            elif hasattr(self.llm_client, 'text_chat'):
                 response = await self.llm_client.text_chat(
                     prompt=user_prompt,
                     system_prompt=comment_prompt,
@@ -339,8 +367,25 @@ class TaskScheduler:
                     session_id=None
                 )
                 
-                if response and response.get('role') == 'assistant':
-                    return response.get('completion_text', '').strip()
+                # 统一处理响应格式
+                if response is None:
+                    return None
+                
+                if isinstance(response, dict):
+                    if response.get('role') == 'assistant':
+                        return response.get('completion_text', '').strip()
+                    elif 'content' in response:
+                        return response['content'].strip()
+                
+                if hasattr(response, 'completion_text'):
+                    return response.completion_text.strip()
+                elif hasattr(response, 'content'):
+                    return response.content.strip()
+                elif hasattr(response, 'role') and response.role == 'assistant':
+                    if hasattr(response, 'completion_text'):
+                        return response.completion_text.strip()
+                
+                return str(response).strip() if response else None
             
         except Exception as e:
             logger.error(f"生成评论失败: {e}")

@@ -37,8 +37,8 @@ install_tips: |
   4. 可选配置自定义API接口
 
 usage_examples:
-  - "/ai动态 发布 - 基于记忆自动生成并发布动态"
-  - "/ai动态 发布 今天心情不错 - 发布指定内容的动态"
-  - "/ai动态 记忆 - 查看记忆系统状态"
-  - "/ai动态 查看总结 7 - 查看最近7天的聊天总结"
-  - "/ai动态 状态 - 查看插件运行状态"
+  - "/aidynamic post - 基于记忆自动生成并发布动态"
+  - "/aidynamic post 今天心情不错 - 发布指定内容的动态"
+  - "/aidynamic memory - 查看记忆系统状态"
+  - "/aidynamic summary 7 - 查看最近7天的聊天总结"
+  - "/aidynamic status - 查看插件运行状态"

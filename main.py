@@ -59,6 +59,50 @@ class AIDynamicPlugin(Star):
             else:
                 logger.warning("未配置LLM，部分功能将无法使用")
     
+    async def _call_llm_unified(self, prompt: str, system_prompt: str = "", contexts: list = None) -> str:
+        """统一的LLM调用接口"""
+        if not self.llm_client:
+            return ""
+        
+        if contexts is None:
+            contexts = []
+        
+        try:
+            # 调用LLM
+            response = await self.llm_client.text_chat(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                contexts=contexts,
+                session_id=None
+            )
+            
+            # 统一处理响应格式
+            if response is None:
+                return ""
+            
+            # 处理自定义API客户端的响应（dict格式）
+            if isinstance(response, dict):
+                if response.get('role') == 'assistant':
+                    return response.get('completion_text', '').strip()
+                elif 'content' in response:
+                    return response['content'].strip()
+            
+            # 处理AstrBot LLM的响应（对象格式）
+            if hasattr(response, 'completion_text'):
+                return response.completion_text.strip()
+            elif hasattr(response, 'content'):
+                return response.content.strip()
+            elif hasattr(response, 'role') and response.role == 'assistant':
+                if hasattr(response, 'completion_text'):
+                    return response.completion_text.strip()
+            
+            # 如果都不匹配，尝试转换为字符串
+            return str(response).strip()
+            
+        except Exception as e:
+            logger.error(f"LLM调用失败: {e}")
+            return ""
+    
     async def _start_background_tasks(self):
         """启动后台任务"""
         try:
@@ -91,18 +135,18 @@ class AIDynamicPlugin(Star):
     
     # ==================== 主命令组 ====================
     
-    @filter.command_group("ai动态")
+    @filter.command_group("aidynamic", alias={"ai动态", "动态"})
     def ai_dynamic_group(self):
         """AI动态管理命令组"""
         pass
     
     # ==================== 动态发布相关命令 ====================
     
-    @ai_dynamic_group.command("发布")
+    @ai_dynamic_group.command("post", alias={"发布", "发动态"})
     async def manual_post(self, event: AstrMessageEvent, content: str = ""):
         """手动发布动态
         
-        用法: /ai动态 发布 [内容]
+        用法: /aidynamic post [内容]
         如果不提供内容，将基于记忆自动生成
         """
         if not self.qzone_api.is_configured():
@@ -136,7 +180,7 @@ class AIDynamicPlugin(Star):
             logger.error(f"手动发布动态失败: {e}")
             yield event.plain_result("❌ 发布动态时出现异常，请检查配置")
     
-    @ai_dynamic_group.command("带图发布")
+    @ai_dynamic_group.command("postimg", alias={"带图发布", "图片动态"})
     async def post_with_images(self, event: AstrMessageEvent, content: str = ""):
         """发布带图片的动态（需要在消息中包含图片）"""
         if not self.qzone_api.is_configured():
@@ -194,25 +238,14 @@ class AIDynamicPlugin(Star):
             
             dynamic_prompt = self.config.get('prompts', {}).get('dynamic_prompt', '')
             
-            user_prompt = f"""
-基于以下最近的生活记录，创作一条个性化的QQ动态：
+            user_prompt = f"""基于以下最近的生活记录，创作一条个性化的QQ动态：
 
 {summary_text}
 
-请创作一条符合当前心情和状态的动态内容。
-"""
+请创作一条符合当前心情和状态的动态内容。"""
             
-            if hasattr(self.llm_client, 'text_chat'):
-                response = await self.llm_client.text_chat(
-                    prompt=user_prompt,
-                    system_prompt=dynamic_prompt,
-                    contexts=[],
-                    session_id=None
-                )
-                
-                if response and (response.get('role') == 'assistant' or hasattr(response, 'completion_text')):
-                    content = response.get('completion_text') or response.get('content', '')
-                    return content.strip()
+            content = await self._call_llm_unified(user_prompt, dynamic_prompt, [])
+            return content if content else await self._generate_general_dynamic()
             
         except Exception as e:
             logger.error(f"生成个性化动态失败: {e}")
@@ -248,7 +281,7 @@ class AIDynamicPlugin(Star):
     
     # ==================== 记忆管理相关命令 ====================
     
-    @ai_dynamic_group.command("记忆")
+    @ai_dynamic_group.command("memory", alias={"记忆", "记忆状态"})
     async def memory_info(self, event: AstrMessageEvent):
         """查看记忆系统状态"""
         try:
@@ -281,11 +314,11 @@ class AIDynamicPlugin(Star):
             logger.error(f"获取记忆信息失败: {e}")
             yield event.plain_result("❌ 获取记忆信息失败")
     
-    @ai_dynamic_group.command("查看总结")
+    @ai_dynamic_group.command("summary", alias={"查看总结", "总结"})
     async def view_summaries(self, event: AstrMessageEvent, days: int = 7):
         """查看最近的总结
         
-        用法: /ai动态 查看总结 [天数]
+        用法: /aidynamic summary [天数]
         """
         user_id = str(event.get_sender_id())
         
@@ -316,11 +349,11 @@ class AIDynamicPlugin(Star):
             logger.error(f"查看总结失败: {e}")
             yield event.plain_result("❌ 获取总结失败")
     
-    @ai_dynamic_group.command("生成总结")
+    @ai_dynamic_group.command("generate", alias={"生成总结", "生成"})
     async def generate_summary(self, event: AstrMessageEvent, date: str = ""):
         """手动生成指定日期的总结
         
-        用法: /ai动态 生成总结 [日期YYYY-MM-DD]
+        用法: /aidynamic generate [日期YYYY-MM-DD]
         不指定日期则为昨天
         """
         user_id = str(event.get_sender_id())
@@ -347,7 +380,7 @@ class AIDynamicPlugin(Star):
             yield event.plain_result(f"🤔 正在生成 {date} 的总结...")
             
             summary = await self.memory_system.generate_daily_summary(
-                user_id, self.llm_client, date
+                user_id, self, date
             )
             
             if summary:
@@ -361,7 +394,7 @@ class AIDynamicPlugin(Star):
     
     # ==================== 系统管理相关命令 ====================
     
-    @ai_dynamic_group.command("状态")
+    @ai_dynamic_group.command("status", alias={"状态", "插件状态"})
     async def plugin_status(self, event: AstrMessageEvent):
         """查看插件状态"""
         try:
@@ -399,7 +432,7 @@ class AIDynamicPlugin(Star):
             logger.error(f"获取插件状态失败: {e}")
             yield event.plain_result("❌ 获取状态失败")
     
-    @ai_dynamic_group.command("测试连接")
+    @ai_dynamic_group.command("test", alias={"测试连接", "测试"})
     async def test_connection(self, event: AstrMessageEvent):
         """测试各项连接"""
         try:

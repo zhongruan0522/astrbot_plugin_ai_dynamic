@@ -1,0 +1,68 @@
+# 代码格式化和验证配置
+
+## Python代码格式化 (ruff)
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+]
+ignore = [
+    "E501",  # line too long (handled by line-length)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+## 格式化命令
+
+```bash
+# 安装ruff
+pip install ruff
+
+# 格式化代码
+ruff format .
+
+# 检查代码
+ruff check .
+
+# 自动修复
+ruff check . --fix
+```
+
+## 代码质量检查点
+
+### 1. 命名约定
+- 使用snake_case命名变量和函数
+- 使用PascalCase命名类
+- 常量使用UPPER_SNAKE_CASE
+
+### 2. 异常处理
+- 具体的异常类型而不是裸露的except
+- 记录异常信息到日志
+- 向用户提供友好的错误消息
+
+### 3. 代码组织
+- 保持函数长度合理（建议<50行）
+- 使用类型提示
+- 添加适当的文档字符串
+
+### 4. 异步编程
+- 正确使用async/await
+- 避免阻塞调用
+- 正确处理asyncio.CancelledError
+
+### 5. 配置管理
+- 验证配置值
+- 提供合理的默认值
+- 配置更改的向后兼容性
