@@ -1,7 +1,7 @@
 import aiohttp
 import json
 import asyncio
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from astrbot.api import logger
 
 
@@ -29,7 +29,14 @@ class CustomAPIClient:
                 self.api_key and 
                 self.model_name)
     
-    async def text_chat(self, prompt: str, system_prompt: str = "", contexts: List[Dict] = None) -> Optional[Dict]:
+    async def text_chat(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        contexts: List[Dict] = None,
+        session_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Optional[Dict]:
         """调用自定义API进行文本对话"""
         if not self.is_enabled():
             return None
@@ -99,7 +106,7 @@ class CustomAPIClient:
         
         return None
     
-    async def test_connection(self) -> Dict[str, any]:
+    async def test_connection(self) -> Dict[str, Any]:
         """测试API连接"""
         if not self.api_url or not self.api_key:
             return {
