@@ -1,4 +1,3 @@
-
 import aiohttp
 import json
 import re
@@ -28,6 +27,7 @@ class _Auth:
     skey: str
     p_skey: str
     gtk: str
+    gtk2: str # Added gtk2 for p_skey
     p_uin: int
 
 class QZoneAPI:
@@ -64,7 +64,6 @@ class QZoneAPI:
             uin = int(uin_str[1:]) if uin_str.startswith('o') else int(uin_str)
             p_uin = int(p_uin_str[1:]) if p_uin_str.startswith('o') else int(p_uin_str)
 
-
             if not all((skey, p_skey, uin)):
                 logger.error("QQ空间Cookie关键信息缺失 (skey, p_skey, uin)")
                 return False
@@ -74,6 +73,7 @@ class QZoneAPI:
                 skey=skey,
                 p_skey=p_skey,
                 gtk=_generate_gtk(skey),
+                gtk2=_generate_gtk(p_skey), # Correctly generate gtk from p_skey
                 p_uin=p_uin
             )
             logger.info(f"QQ空间隐式登录成功: uin={self._auth.uin}")
@@ -105,7 +105,8 @@ class QZoneAPI:
         """aiohttp request wrapper."""
         headers = {
             'User-Agent': self.user_agent,
-            'Referer': 'https://user.qzone.qq.com/',
+            'Referer': f'https://user.qzone.qq.com/{self._auth.uin if self._auth else ""}',
+            'Origin': 'https://user.qzone.qq.com'
         }
         async with self._session.request(
             method.upper(),
@@ -122,7 +123,6 @@ class QZoneAPI:
             if m := re.search(r"_Callback\s*\(\s*([^{]*(\{.*\})[^)]*)\s*\)", text, re.I | re.S):
                 json_str = m.group(2)
             else:
-                # Fallback for non-callback JSON
                 json_str = text[text.find("{") : text.rfind("}") + 1]
             
             try:
@@ -130,7 +130,6 @@ class QZoneAPI:
             except json.JSONDecodeError:
                 logger.warning(f"无法解析JSON: {text}")
                 return {"ret": -1, "msg": "JSONDecodeError", "raw": text}
-
 
     async def close_session(self):
         """Close the aiohttp session."""
@@ -142,7 +141,7 @@ class QZoneAPI:
         return await self.login(client)
 
     async def publish_dynamic(self, client: CQHttp, content: str, images: List[str] = None) -> bool:
-        """发布QQ动态"""
+        """发布QQ动态 (Corrected based on working template)"""
         if not await self.login(client):
             logger.warning("QQ空间未登录，无法发布动态")
             return False
@@ -161,26 +160,29 @@ class QZoneAPI:
                 'to_sign': '0',
                 'hostuin': self._auth.uin,
                 'code_version': '1',
-                'format': 'fs',
+                'format': 'json',  # CORRECTED: from 'fs' to 'json'
                 'qzreferrer': f'https://user.qzone.qq.com/{self._auth.uin}'
             }
             
-            # Image handling logic needs to be adapted if necessary
-            # For now, we assume it works similarly or is not used.
+            # Image handling logic would go here if needed
 
-            url = f"https://user.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_publish_v6?g_tk={self._auth.gtk}"
+            params = {
+                'g_tk': self._auth.gtk2, # CORRECTED: use gtk2 (from p_skey)
+                'uin': self._auth.uin
+            }
+            url = "https://user.qzone.qq.com/proxy/domain/taotao.qzone.qq.com/cgi-bin/emotion_cgi_publish_v6"
             
-            response = await self._request("POST", url, data=post_data)
+            response = await self._request("POST", url, params=params, data=post_data)
 
             if response.get('code') == 0 or response.get('ret') == 0:
-                logger.info("QQ动态发布成功")
+                logger.info(f"QQ动态发布成功: {response.get('tid', '')}")
                 return True
             else:
                 logger.warning(f"QQ动态发布失败: {response}")
                 return False
                     
         except Exception as e:
-            logger.error(f"发布QQ动态异常: {e}")
+            logger.error(f"发布QQ动态异常: {e}", exc_info=True)
             return False
     
     async def get_recent_dynamics(self, client: CQHttp, target_qq: str, count: int = 10) -> List[Dict]:
@@ -198,9 +200,8 @@ class QZoneAPI:
                 'pos': 0,
                 'num': count,
                 'g_tk': self._auth.gtk,
-                'callback': '_Callback',
                 'code_version': 1,
-                'format': 'jsonp',
+                'format': 'json',
             }
             
             url = "https://user.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_msglist_v6"
@@ -252,9 +253,10 @@ class QZoneAPI:
                 'qzreferrer': f'https://user.qzone.qq.com/{owner_qq}'
             }
             
-            url = f"https://user.qzone.qq.com/proxy/domain/taotao.qzone.qq.com/cgi-bin/emotion_cgi_re_feeds?g_tk={self._auth.gtk}"
+            params = {'g_tk': self._auth.gtk2} # Use gtk2 for comments too
+            url = "https://user.qzone.qq.com/proxy/domain/taotao.qzone.qq.com/cgi-bin/emotion_cgi_re_feeds"
             
-            response = await self._request("POST", url, data=comment_data)
+            response = await self._request("POST", url, params=params, data=comment_data)
 
             if response.get('code') == 0 or response.get('ret') == 0:
                 logger.info(f"评论动态成功: {dynamic_id}")
