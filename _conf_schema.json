@@ -157,25 +157,7 @@
       }
     }
   },
-  "qzone_config": {
-    "description": "QQ空间配置",
-    "type": "object",
-    "items": {
-      "qq_cookies": {
-        "description": "QQ空间登录Cookies",
-        "type": "text",
-        "default": "",
-        "hint": "从浏览器获取的QQ空间登录凭据，用于发布动态和评论",
-        "obvious_hint": true
-      },
-      "user_agent": {
-        "description": "浏览器User-Agent",
-        "type": "text", 
-        "default": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "hint": "模拟浏览器的User-Agent字符串"
-      }
-    }
-  },
+  
   "advanced_config": {
     "description": "高级配置",
     "type": "object",
