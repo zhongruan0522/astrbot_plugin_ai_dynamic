@@ -1,44 +1,6 @@
-name: "AI智能动态助手"
-author: "AIDynamic"
-desc: "基于聊天记忆的个性化QQ动态发布助手，支持自动生成、定时发布、智能评论等功能"
+name: "QQD动态"
+author: "Assistant"
+description: "自动保存聊天记录，使用AI生成文案并发送QQ动态"
 version: "1.0.0"
-repo: "https://github.com/user/astrbot_plugin_ai_dynamic"
-plugin_type: "official"
-
-tags:
-  - "社交"
-  - "QQ空间"
-  - "AI生成"
-  - "自动化"
-  - "记忆系统"
-
-requirements:
-  astrbot_version: ">=3.4.0"
-  python_version: ">=3.8"
-
-features:
-  - "🧠 智能记忆系统 - 自动记录和总结用户聊天内容"
-  - "🤖 AI动态生成 - 基于个人聊天记忆生成个性化动态"
-  - "⏰ 定时自动发布 - 可配置时间自动发布动态到QQ空间"
-  - "💬 智能评论回复 - 自动评论指定好友的QQ动态"
-  - "🔧 灵活配置 - 支持自定义API、提示词、发布策略等"
-  - "📊 数据统计 - 提供详细的记忆和发布统计信息"
-
-permissions:
-  - "数据存储"
-  - "网络访问"
-  - "后台任务"
-
-install_tips: |
-  安装后请按以下步骤配置：
-  1. 在插件配置中设置QQ空间登录Cookies
-  2. 配置记忆白名单用户ID列表  
-  3. 根据需要启用自动发布和评论功能
-  4. 可选配置自定义API接口
-
-usage_examples:
-  - "/aidynamic post - 基于记忆自动生成并发布动态"
-  - "/aidynamic post 今天心情不错 - 发布指定内容的动态"
-  - "/aidynamic memory - 查看记忆系统状态"
-  - "/aidynamic summary 7 - 查看最近7天的聊天总结"
-  - "/aidynamic status - 查看插件运行状态"
+repo: "https://github.com/zhongruan0522/astrbot_plugin_ai_dynamic"
+tags: ["qq", "moments", "ai", "automation"]

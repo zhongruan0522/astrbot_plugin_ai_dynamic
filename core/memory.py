@@ -1,375 +1,188 @@
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass
+from datetime import datetime
 import json
-import sqlite3
-import asyncio
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import List, Dict, Optional
-from astrbot.api import logger
+import os
 
+@dataclass
+class ChatMessage:
+    """聊天消息数据模型"""
+    id: str
+    sender_id: str
+    sender_name: str
+    content: str
+    timestamp: int
+    group_id: Optional[str] = None
+    images: List[str] = None
+    
+    def __post_init__(self):
+        if self.images is None:
+            self.images = []
 
-class MemorySystem:
-    """记忆系统 - 负责保存和管理用户聊天记录"""
+@dataclass
+class Memory:
+    """记忆数据模型"""
+    id: str
+    content: str
+    created_at: int
+    updated_at: int
+    summary_type: str  # daily, weekly, monthly
     
-    def __init__(self, data_dir: str, config: dict):
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(exist_ok=True, parents=True)
-        self.config = config
-        
-        # 数据库文件路径
-        self.db_path = self.data_dir / "memory.db"
-        self.init_database()
-        
-    def init_database(self):
-        """初始化数据库"""
-        with sqlite3.connect(str(self.db_path)) as conn:
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS chat_records (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    message_content TEXT NOT NULL,
-                    message_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    session_id TEXT,
-                    platform TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS daily_summaries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    summary_date DATE NOT NULL,
-                    summary_content TEXT NOT NULL,
-                    message_count INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(user_id, summary_date)
-                )
-            ''')
-            
-            conn.execute('''
-                CREATE INDEX IF NOT EXISTS idx_chat_user_time 
-                ON chat_records(user_id, message_time)
-            ''')
-            
-            conn.execute('''
-                CREATE INDEX IF NOT EXISTS idx_summary_user_date 
-                ON daily_summaries(user_id, summary_date)
-            ''')
-            
-            conn.commit()
-            logger.info("记忆系统数据库初始化完成")
+class MemoryManager:
+    """记忆管理器"""
     
-    def is_user_in_whitelist(self, user_id: str) -> bool:
-        """检查用户是否在白名单中"""
-        whitelist = self.config.get('memory_config', {}).get('user_whitelist', [])
-        return str(user_id) in [str(uid) for uid in whitelist]
+    def __init__(self, data_dir: str):
+        self.data_dir = data_dir
+        self.memory_file = os.path.join(data_dir, "memories.json")
+        self.memories: List[Memory] = []
+        self._load_memories()
     
-    async def save_message(self, user_id: str, message: str, session_id: str = "", platform: str = ""):
-        """保存用户消息"""
-        if not self.config.get('memory_config', {}).get('enable_memory', True):
-            return
-            
-        if not self.is_user_in_whitelist(user_id):
-            return
-            
-        # 检查今日消息数量限制
-        today = datetime.now().strftime('%Y-%m-%d')
-        daily_count = await self.get_daily_message_count(user_id, today)
-        max_daily = self.config.get('memory_config', {}).get('max_daily_messages', 100)
+    def _load_memories(self):
+        """加载记忆数据"""
+        if os.path.exists(self.memory_file):
+            try:
+                with open(self.memory_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.memories = [Memory(**item) for item in data]
+            except Exception as e:
+                print(f"加载记忆失败: {e}")
+                self.memories = []
+    
+    def save_memories(self):
+        """保存记忆数据"""
+        try:
+            os.makedirs(os.path.dirname(self.memory_file), exist_ok=True)
+            with open(self.memory_file, 'w', encoding='utf-8') as f:
+                data = [memory.__dict__ for memory in self.memories]
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存记忆失败: {e}")
+    
+    def add_memory(self, content: str, summary_type: str = "daily") -> Memory:
+        """添加新记忆"""
+        memory = Memory(
+            id=f"mem_{int(datetime.now().timestamp())}",
+            content=content,
+            created_at=int(datetime.now().timestamp()),
+            updated_at=int(datetime.now().timestamp()),
+            summary_type=summary_type
+        )
+        self.memories.append(memory)
+        self.save_memories()
+        return memory
+    
+    def get_memories(self, limit: int = 10) -> List[Memory]:
+        """获取最近的记忆"""
+        return sorted(self.memories, key=lambda x: x.created_at, reverse=True)[:limit]
+    
+    def get_memories_by_type(self, summary_type: str) -> List[Memory]:
+        """根据类型获取记忆"""
+        return [m for m in self.memories if m.summary_type == summary_type]
+    
+    def delete_memory(self, memory_id: str) -> bool:
+        """删除记忆"""
+        self.memories = [m for m in self.memories if m.id != memory_id]
+        self.save_memories()
+        return True
+    
+    def clear_old_memories(self, days: int = 30):
+        """清理旧记忆"""
+        cutoff_time = int(datetime.now().timestamp()) - (days * 24 * 60 * 60)
+        self.memories = [m for m in self.memories if m.created_at > cutoff_time]
+        self.save_memories()
+
+class ChatRecorder:
+    """聊天记录管理器"""
+    
+    def __init__(self, data_dir: str):
+        self.data_dir = data_dir
+        self.temp_dir = os.path.join(data_dir, "temp_chats")
+        os.makedirs(self.temp_dir, exist_ok=True)
+    
+    def save_chat_message(self, message: ChatMessage):
+        """保存聊天消息到临时文件"""
+        date_str = datetime.fromtimestamp(message.timestamp).strftime("%Y-%m-%d")
+        file_path = os.path.join(self.temp_dir, f"chats_{date_str}.json")
         
-        if daily_count >= max_daily:
-            logger.debug(f"用户 {user_id} 今日消息数量已达上限 ({max_daily})")
-            return
+        # 加载现有数据
+        chats = []
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    chats = json.load(f)
+            except Exception:
+                chats = []
+        
+        # 添加新消息
+        chats.append(message.__dict__)
+        
+        # 保存数据
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(chats, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存聊天记录失败: {e}")
+    
+    def get_today_chats(self) -> List[ChatMessage]:
+        """获取今日聊天记录"""
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        file_path = os.path.join(self.temp_dir, f"chats_{date_str}.json")
+        
+        if not os.path.exists(file_path):
+            return []
         
         try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                conn.execute('''
-                    INSERT INTO chat_records (user_id, message_content, session_id, platform)
-                    VALUES (?, ?, ?, ?)
-                ''', (user_id, message, session_id, platform))
-                conn.commit()
-                
-            logger.debug(f"保存用户 {user_id} 的消息记录")
-        except Exception as e:
-            logger.error(f"保存消息记录失败: {e}")
-    
-    async def get_daily_message_count(self, user_id: str, date: str) -> int:
-        """获取用户某日的消息数量"""
-        try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.execute('''
-                    SELECT COUNT(*) FROM chat_records 
-                    WHERE user_id = ? AND DATE(message_time) = ?
-                ''', (user_id, date))
-                return cursor.fetchone()[0]
-        except Exception as e:
-            logger.error(f"获取日消息数量失败: {e}")
-            return 0
-    
-    async def get_recent_messages(self, user_id: str, days: int = 1) -> List[Dict]:
-        """获取用户最近几天的消息"""
-        try:
-            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-            
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.execute('''
-                    SELECT message_content, message_time, platform 
-                    FROM chat_records 
-                    WHERE user_id = ? AND DATE(message_time) >= ?
-                    ORDER BY message_time ASC
-                ''', (user_id, start_date))
-                
-                messages = []
-                for row in cursor.fetchall():
-                    messages.append({
-                        'content': row[0],
-                        'time': row[1],
-                        'platform': row[2]
-                    })
-                return messages
-        except Exception as e:
-            logger.error(f"获取历史消息失败: {e}")
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return [ChatMessage(**item) for item in data]
+        except Exception:
             return []
     
-    async def generate_daily_summary(self, user_id: str, llm_client, date: str = None) -> Optional[str]:
-        """生成用户的每日总结"""
-        if date is None:
-            date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    def get_recent_chats(self, days: int = 7) -> List[ChatMessage]:
+        """获取最近几天的聊天记录"""
+        all_chats = []
+        cutoff_time = int(datetime.now().timestamp()) - (days * 24 * 60 * 60)
         
-        # 检查是否已有当日总结
-        existing_summary = await self.get_daily_summary(user_id, date)
-        if existing_summary:
-            logger.debug(f"用户 {user_id} 在 {date} 的总结已存在")
-            return existing_summary['summary_content']
+        for filename in os.listdir(self.temp_dir):
+            if filename.startswith("chats_") and filename.endswith(".json"):
+                file_path = os.path.join(self.temp_dir, filename)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        chats = [ChatMessage(**item) for item in data 
+                                if item.get('timestamp', 0) > cutoff_time]
+                        all_chats.extend(chats)
+                except Exception:
+                    continue
         
-        # 获取当日消息
-        messages = await self.get_messages_by_date(user_id, date)
-        if not messages:
-            logger.debug(f"用户 {user_id} 在 {date} 没有消息记录")
-            return None
-        
-        # 构建总结提示词
-        message_texts = [msg['content'] for msg in messages]
-        messages_text = '\n'.join([f"[{msg['time']}] {msg['content']}" for msg in messages])
-        
-        summary_prompt = f'''
-请为以下用户的聊天记录生成一份简洁的日常总结：
-
-日期：{date}
-消息条数：{len(messages)}
-
-聊天记录：
-{messages_text}
-
-请生成一份100字以内的总结，重点关注：
-1. 用户的心情状态
-2. 主要话题和关注点  
-3. 生活状态和变化
-4. 值得记住的重要信息
-
-总结要客观、简洁，便于后续生成个性化动态内容时参考。
-'''
-        
-        try:
-            # 调用LLM生成总结
-            summary = await self._call_llm_for_summary(llm_client, summary_prompt)
-            
-            if summary:
-                # 保存总结
-                await self.save_daily_summary(user_id, date, summary, len(messages))
-                logger.info(f"生成用户 {user_id} 在 {date} 的日常总结")
-                return summary
-            
-        except Exception as e:
-            logger.error(f"生成日常总结失败: {e}")
-        
-        return None
+        return sorted(all_chats, key=lambda x: x.timestamp, reverse=True)
     
-    async def _call_llm_for_summary(self, llm_client, prompt: str) -> Optional[str]:
-        """调用LLM生成总结"""
-        try:
-            if hasattr(llm_client, '_call_llm_unified'):
-                # 使用主插件的统一LLM接口
-                return await llm_client._call_llm_unified(
-                    prompt=prompt,
-                    system_prompt="你是一个善于总结和分析的助手，能够从对话中提取关键信息并生成简洁的总结。",
-                    contexts=[]
-                )
-            elif hasattr(llm_client, 'text_chat'):
-                # 直接调用LLM
-                response = await llm_client.text_chat(
-                    prompt=prompt,
-                    system_prompt="你是一个善于总结和分析的助手，能够从对话中提取关键信息并生成简洁的总结。",
-                    contexts=[],
-                    session_id=None
-                )
-                
-                # 统一处理响应格式
-                if response is None:
-                    return None
-                
-                # 处理dict格式响应
-                if isinstance(response, dict):
-                    if response.get('role') == 'assistant':
-                        return response.get('completion_text', '').strip()
-                    elif 'content' in response:
-                        return response['content'].strip()
-                
-                # 处理对象格式响应
-                if hasattr(response, 'completion_text'):
-                    return response.completion_text.strip()
-                elif hasattr(response, 'content'):
-                    return response.content.strip()
-                elif hasattr(response, 'role') and response.role == 'assistant':
-                    if hasattr(response, 'completion_text'):
-                        return response.completion_text.strip()
-                
-                return str(response).strip() if response else None
-            
-        except Exception as e:
-            logger.error(f"LLM调用失败: {e}")
+    def clean_old_chats(self, days: int = 7):
+        """清理旧的聊天记录"""
+        cutoff_time = int(datetime.now().timestamp()) - (days * 24 * 60 * 60)
         
-        return None
-    
-    async def get_messages_by_date(self, user_id: str, date: str) -> List[Dict]:
-        """获取指定日期的消息"""
-        try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.execute('''
-                    SELECT message_content, message_time, platform 
-                    FROM chat_records 
-                    WHERE user_id = ? AND DATE(message_time) = ?
-                    ORDER BY message_time ASC
-                ''', (user_id, date))
+        for filename in os.listdir(self.temp_dir):
+            if filename.startswith("chats_") and filename.endswith(".json"):
+                file_path = os.path.join(self.temp_dir, filename)
                 
-                messages = []
-                for row in cursor.fetchall():
-                    messages.append({
-                        'content': row[0],
-                        'time': row[1],
-                        'platform': row[2]
-                    })
-                return messages
-        except Exception as e:
-            logger.error(f"获取指定日期消息失败: {e}")
-            return []
-    
-    async def save_daily_summary(self, user_id: str, date: str, summary: str, message_count: int):
-        """保存日常总结"""
-        try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                conn.execute('''
-                    INSERT OR REPLACE INTO daily_summaries 
-                    (user_id, summary_date, summary_content, message_count)
-                    VALUES (?, ?, ?, ?)
-                ''', (user_id, date, summary, message_count))
-                conn.commit()
-        except Exception as e:
-            logger.error(f"保存日常总结失败: {e}")
-    
-    async def get_daily_summary(self, user_id: str, date: str) -> Optional[Dict]:
-        """获取日常总结"""
-        try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.execute('''
-                    SELECT summary_content, message_count, created_at
-                    FROM daily_summaries 
-                    WHERE user_id = ? AND summary_date = ?
-                ''', (user_id, date))
-                
-                row = cursor.fetchone()
-                if row:
-                    return {
-                        'summary_content': row[0],
-                        'message_count': row[1],
-                        'created_at': row[2]
-                    }
-        except Exception as e:
-            logger.error(f"获取日常总结失败: {e}")
-        
-        return None
-    
-    async def get_recent_summaries(self, user_id: str, days: int = 7) -> List[Dict]:
-        """获取最近几天的总结"""
-        try:
-            start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-            
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.execute('''
-                    SELECT summary_date, summary_content, message_count
-                    FROM daily_summaries 
-                    WHERE user_id = ? AND summary_date >= ?
-                    ORDER BY summary_date DESC
-                ''', (user_id, start_date))
-                
-                summaries = []
-                for row in cursor.fetchall():
-                    summaries.append({
-                        'date': row[0],
-                        'summary': row[1],
-                        'message_count': row[2]
-                    })
-                return summaries
-        except Exception as e:
-            logger.error(f"获取近期总结失败: {e}")
-            return []
-    
-    async def cleanup_old_data(self):
-        """清理过期数据"""
-        try:
-            memory_days = self.config.get('memory_config', {}).get('memory_days', 30)
-            cutoff_date = (datetime.now() - timedelta(days=memory_days)).strftime('%Y-%m-%d')
-            
-            with sqlite3.connect(str(self.db_path)) as conn:
-                # 清理旧的聊天记录
-                cursor = conn.execute('''
-                    DELETE FROM chat_records WHERE DATE(message_time) < ?
-                ''', (cutoff_date,))
-                deleted_messages = cursor.rowcount
-                
-                # 清理旧的总结（保留时间稍长一些）
-                summary_cutoff = (datetime.now() - timedelta(days=memory_days * 2)).strftime('%Y-%m-%d')
-                cursor = conn.execute('''
-                    DELETE FROM daily_summaries WHERE summary_date < ?
-                ''', (summary_cutoff,))
-                deleted_summaries = cursor.rowcount
-                
-                conn.commit()
-                
-                if deleted_messages > 0 or deleted_summaries > 0:
-                    logger.info(f"清理过期数据完成: 消息 {deleted_messages} 条, 总结 {deleted_summaries} 条")
+                # 检查文件是否有过期数据
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
                     
-        except Exception as e:
-            logger.error(f"清理过期数据失败: {e}")
-    
-    async def get_memory_stats(self) -> Dict:
-        """获取记忆系统统计信息"""
-        try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                # 总消息数
-                cursor = conn.execute('SELECT COUNT(*) FROM chat_records')
-                total_messages = cursor.fetchone()[0]
-                
-                # 总用户数
-                cursor = conn.execute('SELECT COUNT(DISTINCT user_id) FROM chat_records')
-                total_users = cursor.fetchone()[0]
-                
-                # 总结数
-                cursor = conn.execute('SELECT COUNT(*) FROM daily_summaries')
-                total_summaries = cursor.fetchone()[0]
-                
-                # 今日消息数
-                today = datetime.now().strftime('%Y-%m-%d')
-                cursor = conn.execute('SELECT COUNT(*) FROM chat_records WHERE DATE(message_time) = ?', (today,))
-                today_messages = cursor.fetchone()[0]
-                
-                return {
-                    'total_messages': total_messages,
-                    'total_users': total_users,
-                    'total_summaries': total_summaries,
-                    'today_messages': today_messages,
-                    'database_size': self.db_path.stat().st_size if self.db_path.exists() else 0
-                }
-        except Exception as e:
-            logger.error(f"获取统计信息失败: {e}")
-            return {}
+                    # 过滤有效数据
+                    valid_data = [item for item in data if item.get('timestamp', 0) > cutoff_time]
+                    
+                    if valid_data:
+                        # 重写文件
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            json.dump(valid_data, f, ensure_ascii=False, indent=2)
+                    else:
+                        # 删除空文件
+                        os.remove(file_path)
+                except Exception:
+                    # 删除损坏的文件
+                    try:
+                        os.remove(file_path)
+                    except:
+                        pass
